@@ -1,0 +1,90 @@
+schedule -- composable time-based schedule rules for Go
+
+OVERVIEW
+
+  Package schedule lets you define when a program should be active
+  using composable rules: day-of-week, time-of-day, date inclusion/
+  exclusion, and date ranges. All rules must match for a time to
+  be considered active. Overnight time ranges (e.g. 22:00-02:00)
+  are handled correctly across midnight boundaries.
+
+USAGE (CODE)
+
+  s := schedule.New(
+      schedule.Weekdays(),
+      schedule.ExceptDates("2026-01-01", "2026-12-25"),
+      schedule.TimeRange("07:00", "19:00"),
+  )
+
+  s.Match(time.Now())       // true if now is in schedule
+  s.Watch()                 // SIGTERM self when schedule ends
+  s.Wait()                  // block until schedule is active
+
+USAGE (JSON)
+
+  s, err := schedule.Parse(jsonBytes)
+
+  {
+    "days": "weekdays",
+    "time_range": ["07:00", "19:00"],
+    "except_dates": ["2026-01-01", "2026-12-25"]
+  }
+
+  "days" accepts "weekdays", "weekends", or an array:
+  ["monday", "wednesday", "friday"]
+
+RULES
+
+  Weekdays()              Mon-Fri
+  Weekends()              Sat-Sun
+  Days(time.Weekday...)   specific weekdays
+  TimeRange(from, to)     clock window, "HH:MM" format
+                          supports overnight (e.g. "22:00", "02:00")
+  ExceptDates(dates...)   exclude "YYYY-MM-DD" dates
+  OnlyDates(dates...)     match only specific dates
+  DateRange(start, end)   match date range inclusive
+  Not(rule)               invert any rule
+  RuleFunc(fn)            custom rule from func(time.Time) bool
+
+METHODS
+
+  Match(t time.Time) bool
+      Returns true if t satisfies all rules.
+
+  Window(t time.Time) (start, end time.Time, ok bool)
+      Returns the start and end of the active window containing t.
+
+  Next(t time.Time) (time.Time, bool)
+      Returns the next minute at or after t where the schedule
+      becomes active. Scans up to 400 days.
+
+  ActiveUntil(t time.Time) (time.Time, bool)
+      Returns the last contiguous active minute from t.
+
+  Watch()
+      Background goroutine. Sends SIGTERM when schedule ends.
+      Panics after 30s if process does not exit.
+
+  Wait()
+      Blocks until the schedule becomes active.
+
+OVERNIGHT SCHEDULES
+
+  TimeRange("22:00", "02:00") with Weekdays() means:
+
+    Fri 22:00 - Sat 02:00    active (started on Friday)
+    Sat 22:00 - Sun 02:00    inactive (Saturday is not a weekday)
+    Sun 22:00 - Mon 02:00    inactive (Sunday is not a weekday)
+    Mon 22:00 - Tue 02:00    active (started on Monday)
+
+  Day/date rules are evaluated against the day the window started,
+  not the current calendar day.
+
+JSON CONFIG FIELDS
+
+  days          string or []string    day-of-week filter
+  time_range    [string, string]      clock window "HH:MM"
+  except_dates  []string              excluded dates "YYYY-MM-DD"
+  only_dates    []string              included dates only
+  date_range    [string, string]      date range inclusive
+  not           bool                  invert entire schedule
